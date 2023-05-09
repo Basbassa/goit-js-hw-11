@@ -1,75 +1,94 @@
+import './css/styles.css';
+import { fetchImages } from './js/fetchImages';
+import { renderGallery } from './js/renderGallery';
+import { onScroll, onToTopBtn } from './js/scroll';
 import Notiflix from 'notiflix';
+import SimpleLightbox from 'simplelightbox';
+import 'simplelightbox/dist/simple-lightbox.min.css';
 
-const apiKey = '4780863-4872bedc84fbdcc09d25477c4';
-const searchForm = document.querySelector('#search-form');
-const searchInput = document.querySelector('[name="searchQuery"]');
-const galleryContainer = document.querySelector('.gallery');
+const form = document.querySelector('#search-form');
+const gallery = document.querySelector('.gallery');
+const loadMoreBtn = document.querySelector('.btn-load-more');
+let query = '';
+let currentPage = 1;
+const imagesPerPage = 40;
+let lightbox;
 
-searchForm.addEventListener('submit', handleSearch);
+form.addEventListener('submit', onSearch);
+loadMoreBtn.addEventListener('click', onLoadMore);
 
-function handleSearch(event) {
-  event.preventDefault();
-  const query = searchInput.value.trim();
-  if (!query) return;
-  fetch(
-    `https://pixabay.com/api/?key=${apiKey}&q=${query}&image_type=photo&orientation=horizontal&safesearch=true`
-  )
-    .then(response => response.json())
-    .then(({ hits }) => {
-      if (hits.length === 0) {
-        showErrorNotification();
-        return;
+onScroll();
+onToTopBtn();
+
+function onSearch(e) {
+  e.preventDefault();
+  window.scrollTo({ top: 0 });
+  currentPage = 1;
+  query = e.currentTarget.searchQuery.value.trim();
+  gallery.innerHTML = '';
+  loadMoreBtn.classList.add('is-hidden');
+
+  if (!query) {
+    alertEmptySearch();
+    return;
+  }
+
+  fetchImages(query, currentPage, imagesPerPage)
+    .then(({ data }) => {
+      const { hits, totalHits } = data;
+      if (totalHits === 0) {
+        alertNoImages();
+      } else {
+        renderGallery(hits);
+        lightbox = new SimpleLightbox('.gallery a').refresh();
+        alertImages(totalHits);
+
+        if (totalHits > imagesPerPage) {
+          loadMoreBtn.classList.remove('is-hidden');
+        }
       }
-      showGallery(hits);
     })
-    .catch(error => {
-      console.error(error);
-      showErrorNotification();
-    });
+    .catch(error => console.log(error));
 }
 
-function showGallery(hits) {
-  galleryContainer.innerHTML = '';
-  const galleryMarkup = hits
-    .map(
-      ({
-        webformatURL,
-        largeImageURL,
-        tags,
-        likes,
-        views,
-        comments,
-        downloads,
-      }) => `
-      <div class="photo-card">
-        <img src="${webformatURL}" data-source="${largeImageURL}" alt="${tags}" loading="lazy" />
-        <div class="stats">
-          <p class="stats-item">
-            <i class="material-icons">thumb_up</i>
-            ${likes}
-          </p>
-          <p class="stats-item">
-            <i class="material-icons">visibility</i>
-            ${views}
-          </p>
-          <p class="stats-item">
-            <i class="material-icons">comment</i>
-            ${comments}
-          </p>
-          <p class="stats-item">
-            <i class="material-icons">cloud_download</i>
-            ${downloads}
-          </p>
-        </div>
-      </div>
-    `
-    )
-    .join('');
-  galleryContainer.insertAdjacentHTML('beforeend', galleryMarkup);
+function onLoadMore() {
+  currentPage += 1;
+  lightbox.destroy();
+
+  fetchImages(query, currentPage, imagesPerPage)
+    .then(({ data }) => {
+      const { hits, totalHits } = data;
+      renderGallery(hits);
+      lightbox = new SimpleLightbox('.gallery a').refresh();
+
+      const totalPages = Math.ceil(totalHits / imagesPerPage);
+
+      if (currentPage > totalPages) {
+        loadMoreBtn.classList.add('is-hidden');
+        alertEndOfSearch();
+      }
+    })
+    .catch(error => console.log(error));
 }
 
-function showErrorNotification() {
-  notiflix.Notify.failure(
+function alertImages(totalHits) {
+  Notiflix.Notify.success(`Hooray! We found ${totalHits} images.`);
+}
+
+function alertEmptySearch() {
+  Notiflix.Notify.failure(
+    'The search string cannot be empty. Please specify your search query.'
+  );
+}
+
+function alertNoImages() {
+  Notiflix.Notify.failure(
     'Sorry, there are no images matching your search query. Please try again.'
+  );
+}
+
+function alertEndOfSearch() {
+  Notiflix.Notify.failure(
+    "We're sorry, but you've reached the end of search results."
   );
 }
